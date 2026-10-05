@@ -1,0 +1,28 @@
+# The port data of the FAMAS F1.
+#   python3 tools/port.py port.toml          run the port
+#   python3 tools/port.py port.toml show     print each value that the tools assume
+#
+# The folder `source` has the extracted mod. The tools find the model, the animations, the
+# gun parts, the clips and their events there. This file gives only what they cannot find.
+name = "FAMAS"
+template = "smg"
+
+# New Vegas has a complete model for each set of weapon mods. Each table takes the shapes of
+# one part from such a model. The beam of the DBAL (Laser:0) is not used.
+[[attachment]]
+name = "Suppressor"
+model = "meshes/weapons/MMP/FAMAS/FAMASSIL.nif"
+shapes = ["Silencer:0"]
+connect = "Muzzle"
+
+[[attachment]]
+name = "Scope"
+model = "meshes/weapons/MMP/FAMAS/FAMAS4X.nif"
+shapes = ["UpperRail:0", "Scope:0", "Lens:0"]
+connect = "Scope"
+
+[[attachment]]
+name = "DBAL"
+model = "meshes/weapons/MMP/FAMAS/FAMASDBAL.nif"
+shapes = ["LowerRail:0", "DBAL:0", "DBALMount:0"]
+connect = "Foregrip"
