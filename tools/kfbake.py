@@ -2,8 +2,8 @@
 
     python3 tools/kfbake.py FILE.kf --model GUN.nif -o out/anim/NAME.json [--skeleton rig/nvcs_1st.json] [--fps 30]
 
-The output has the format of maxbake.py: for each node, its parent and its world matrix for
-each sample time. A matrix is 12 numbers: the three axis rows and the translation row.
+The output is a bake file: for each node, its parent and its world matrix for each sample
+time. A matrix is 12 numbers: the three axis rows and the translation row.
 The nodes are the bones of the first-person skeleton and the nodes and shapes of the gun
 model, which hang on the bone Weapon. A node with no track keeps its rest transform.
 """

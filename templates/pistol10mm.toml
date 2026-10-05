@@ -1,23 +1,14 @@
-# The vanilla 10mm pistol of Fallout 4 as the template of a port.
-# The template gives the records, the behavior graph, the sounds, the third-person clips and
-# the weapon motion of each first-person clip that the source mod does not have.
-# The behavior source of the weapon uses `like AnimsFP10mm`.
-#
-# The vanilla Deliverer is not a template: in the test game of `esx probe` its animation graph
-# does not become active (the vanilla record, with no mod), so no game test can prove it.
+# The vanilla 10mm pistol of Fallout 4 as the template of a conversion.
+# The template gives the weapon bones, the names of the sounds in the clip events and the
+# weapon motion of each first-person clip that the source mod does not have.
 
-record = "10mm"
-receiver = "mod_10mm_Receiver_Standard"
-# The animation keyword of the template (`like` in a behavior source), and a model with no
-# shape for the weapon record: the receiver part has the gun.
-anims = "AnimsFP10mm"
-dummy_model = 'Weapons\10mmPistol\10mmRecieverDummy.nif'
+# The sound name in the events of a clip (SoundPlay.<sound>Reload<NAME>).
 sound = "WPNPistol10mm"
 # The first-person clips of the template, in rig/ (the folder Pistol of the game).
 clips = "pistol10mm"
 # The folder of these clips in the game (Meshes/Actors/Character/_1stPerson/Animations).
 game_clips = "Pistol"
-# The reload sounds that the sound records of the template have (SoundPlay.<sound>Reload<NAME>).
+# The reload sounds that the template weapon has.
 reload_sounds = ["MagOut", "MagIn", "BoltClose"]
 # In the sights the weapon bone is this far in front of the camera. It is the value of the
 # vanilla Deliverer clip, a pistol of the size of a pocket pistol. The 10mm clip has 22.4.
@@ -62,8 +53,8 @@ WeaponTrigger = "Weapon"
 WeaponExtra2 = "Weapon"
 WeaponOptics1 = "Weapon"
 
-# The bone of each kind of gun part. A weapon with no [parts] table gets its bones by these
-# roles (tools/port_defaults.py). `spare` are bones for nodes that have no role.
+# The bone of each kind of gun part. The tools give each gun node its bone by these roles
+# (tools/port_defaults.py). `spare` are bones for nodes that have no role.
 [roles]
 bolt = "WeaponBolt"
 magazine = "WeaponMagazine"

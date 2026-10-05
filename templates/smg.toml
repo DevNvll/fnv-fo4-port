@@ -1,22 +1,17 @@
-# The vanilla submachine gun of Fallout 4 as the template of a port.
-# The template gives the records, the behavior graph, the sounds, the third-person clips and
-# the weapon motion of each first-person clip that the source mod does not have.
+# The vanilla submachine gun of Fallout 4 as the template of a conversion.
+# The template gives the weapon bones, the names of the sounds in the clip events and the
+# weapon motion of each first-person clip that the source mod does not have.
 
-record = "SubmachineGun"
-receiver = "mod_SubmachineGun_Receiver_Automatic1"
-# The animation keyword of the template (`like` in a behavior source), and a model with no
-# shape for the weapon record: the receiver part has the gun.
-anims = "AnimsSubmachineGun"
-dummy_model = 'Weapons\HandMade\Recievers\DummyReciever.nif'
+# The sound name in the events of a clip (SoundPlay.<sound>Reload<NAME>).
 sound = "WPNRifleSubmachineGun"
 # The first-person clips of the template, in rig/. Each name is in lower case.
 clips = "smg"
 # The folder of these clips in the game (Meshes/Actors/Character/_1stPerson/Animations).
 game_clips = "SubmachineGun"
-# The reload sounds that the sound records of the template have (SoundPlay.<sound>Reload<NAME>).
+# The reload sounds that the template weapon has.
 reload_sounds = ["MagOut", "MagIn", "BoltOpen", "BoltClose"]
-# The trigger pivot in Fallout 4 weapon space. The trigger of the ported gun goes here, so the
-# hands of the vanilla clips hold the grip.
+# The trigger pivot in Fallout 4 weapon space. The trigger of the gun of the mod goes here,
+# so the hands of the vanilla clips (third person) hold the grip.
 trigger_pivot = [-0.047043, 17.142828, 0.323534]
 
 # The rest place of each weapon bone relative to its parent bone, with no rotation
@@ -37,8 +32,8 @@ WeaponTrigger = "Weapon"
 WeaponExtra1 = "Weapon"
 WeaponExtra2 = "Weapon"
 
-# The bone of each kind of gun part. A weapon with no [parts] table gets its bones by these
-# roles (tools/port_defaults.py). `spare` are bones for nodes that have no role.
+# The bone of each kind of gun part. The tools give each gun node its bone by these roles
+# (tools/port_defaults.py). `spare` are bones for nodes that have no role.
 [roles]
 bolt = "WeaponBolt"
 magazine = "WeaponMagazine"
