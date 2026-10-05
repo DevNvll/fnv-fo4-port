@@ -18,7 +18,7 @@ from mathutils import Matrix, Quaternion, Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
-from common import Bake, load_target, load_source_rest, max_to_matrix  # noqa: E402
+from common import Bake, load_target, load_source_rest  # noqa: E402
 from solver import Retargeter, Collider, ARM_ROLL  # noqa: E402
 import port_config as cfg  # noqa: E402
 
@@ -39,8 +39,14 @@ class Setup:
 
     def __init__(self, a, source, target):
         self.a, self.source, self.target = a, source, target
-        self.tips = json.load(open(a.tips)) if a.tips and os.path.exists(a.tips) else None
-        self.collider_parts = json.load(open(a.parts)) if a.parts and os.path.exists(a.parts) else None
+        if not os.path.exists(a.tips):
+            raise SystemExit('the file %s is not there (measurements of the two hand meshes, rig/finger_tips.json of the repository)' % a.tips)
+        self.tips = json.load(open(a.tips))
+        self.collider_parts = None
+        if not a.no_collision and a.fingers != 'rotation':
+            if not os.path.exists(a.parts):
+                raise SystemExit('the file %s is not there: run the step `parts` first' % a.parts)
+            self.collider_parts = json.load(open(a.parts))
 
     def retargeter(self):
         a = self.a

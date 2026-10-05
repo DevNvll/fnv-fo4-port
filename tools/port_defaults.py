@@ -1,37 +1,33 @@
-"""The defaults of a configuration file (port.toml).
+"""The defaults of a configuration file.
 
-A configuration file gives only what the tools cannot find. For a New Vegas mod with a model
-and `.kf` animations, two keys are sufficient:
+tools/port.py writes a configuration file for a source folder, and a file of your own gives
+only what the tools cannot find. Two keys are sufficient:
 
     name = "PPK"
     template = "pistol10mm"
 
 resolve() adds each other value to the data of the file, and each tool then reads the
 complete data. A value of the file always replaces a default.
-`python3 tools/port.py port.toml show` prints the complete data.
+`python3 tools/port.py CONFIG show` prints the complete data.
 
 What the defaults are:
 
     work          /tmp/NAME-port (the name in lower case)
     source        the folder `source` beside the file: the extracted mod
+    output        the folder NAME-fo4 beside the file: the HKX clips
     model         the model (.nif) of the source with the fewest shapes; then the shortest name
     animations    the folder `_1stperson` of the source that has the most .kf files
-    textures      the folder `textures` of the source
     [weapon] trigger   the center of the shape whose name has "trigger"
     [parts]       each node `##NAME` of the model that has a shape, by a word in its name:
                   bar, bolt, slide, lever, charg -> the bolt bone; clip, mag -> the magazine bone;
                   shell, bullet, round, cartridge -> the cartridge bone; trigger; hammer.
                   The template says which bone each of these is ([roles]). A node with no such
                   word gets a spare bone of the template.
-    [glb]         meshes/Weapons/NAME/NAMEReceiver.glb, with the static node NAMEReceiver
-    [hkx]         behavior/NAME/animations/first_person (the name in lower case)
     [fingers]     min_bend = 0.3, skin_center = true
     [collision]   the shapes on the cartridge bone are not colliders (they are in the magazine)
-    [validate]    the same shapes
-    [[attachment]]  connect = "Muzzle" gives at = "ProjectileNode" and projectile = true
     [synth] ready      the first frame of the clip of WPNIdleReady, else of the reload
     [synth] sighted    the aim pose, moved until the node ##SightingNode is on the view axis
-    [clips]       each animation of the source, by its New Vegas name (see CLIP_OF), and each
+    [clips]       each animation of the source, by its New Vegas name (see clip_of), and each
                   other clip of the standard set from the weapon motion of the template
 
 The events of a reload come from the motion: the magazine sounds when the magazine leaves its
@@ -41,6 +37,7 @@ hand is back. The tool prints them. `events` in [clips.NAME] replaces them.
 import json
 import os
 import re
+import sys
 import numpy as np
 
 # the first-person clips of a gun
@@ -354,41 +351,42 @@ def auto_clips(D, template, out, rig, model_nodes):
             static.pop(name, None)
 
 
+KEYS = ('name', 'template', 'work', 'source', 'output', 'model', 'animations', 'weapon', 'parts', 'fingers',
+        'collision', 'synth', 'clips')
+
+
 def resolve(D, project, template, out, rig):
-    """Complete the data of a configuration file. Returns the model of a NIF source, or None."""
-    name = D['name']
-    src = D.get('source')
-    if isinstance(src, dict) and src.get('kind') == 'max':
-        D.setdefault('fingers', {}).setdefault('min_bend', 0.3)
-        D['fingers'].setdefault('skin_center', True)
-        D.setdefault('glb', {}).setdefault('output', 'meshes/Weapons/%s/%sReceiver.glb' % (name, name))
-        D['glb'].setdefault('static_name', name + 'Receiver')
-        D.setdefault('hkx', {}).setdefault('output', 'behavior/%s/animations/first_person' % name.lower())
-        return None
+    """Complete the data of a configuration file. Returns the model of the source."""
     import fnvnif
+    name = D['name']
+    if not os.environ.get('PORT_CHILD'):
+        for key in D:
+            if key not in KEYS:
+                print('[port] the configuration file has `%s`, which the tools do not use' % key, file=sys.stderr)
 
     def full(p, base):
         p = os.path.expanduser(str(p))
         return p if os.path.isabs(p) else os.path.normpath(os.path.join(base, p))
+    src = D.get('source')
     if isinstance(src, dict):
         table = dict(src)
         folder = full(table.get('folder', 'source'), project)
     else:
         table = {}
         folder = full(src or 'source', project)
-    table['kind'] = 'nif'
     table['folder'] = folder
-    # `model` and `animations` can be at the top of the file. ([textures] there has the options
-    # of the textures step; the texture folder of the source is `textures` of [source].)
+    # `model` and `animations` can be at the top of the file
     for key in ('model', 'animations'):
         if key in D and key not in table:
             table[key] = D.pop(key)
-    if not os.path.isdir(folder) and not all(os.path.isabs(str(table.get(k, ''))) for k in ('model',)):
+    if not os.path.isdir(folder) and not os.path.isabs(str(table.get('model', ''))):
         raise SystemExit('the source folder %s is not there: extract the mod into it, or give `source`' % folder)
     table['model'] = full(table['model'], folder) if table.get('model') else find_model(folder)
     anims = table.get('animations')
     if anims is None:
         anims = find_animations(folder)
+        if anims is None:
+            raise SystemExit('the folder %s has no _1stperson folder with .kf files: give `animations`' % folder)
     if isinstance(anims, str):
         # each animation of the folder that has a clip (not a sneak copy, a jam or an empty-gun variant)
         base = full(anims, folder)
@@ -397,11 +395,8 @@ def resolve(D, project, template, out, rig):
     else:
         anims = {k: full(v, folder) for k, v in (anims or {}).items()}
     table['animations'] = anims
-    if 'textures' in table:
-        table['textures'] = full(table['textures'], folder)
-    elif os.path.isdir(os.path.join(folder, 'textures')):
-        table['textures'] = os.path.join(folder, 'textures')
     D['source'] = table
+    D.setdefault('output', name + '-fo4')
 
     nif = fnvnif.Nif(table['model'])
     nodes, shapes = set(), []
@@ -422,9 +417,6 @@ def resolve(D, project, template, out, rig):
         weapon['trigger'] = [round(float(x), 3) for x in (hit[0].min(0) + hit[0].max(0)) / 2]
     if 'parts' not in D:
         D['parts'] = auto_parts(nif, template)
-    D.setdefault('glb', {}).setdefault('output', 'meshes/Weapons/%s/%sReceiver.glb' % (name, name))
-    D['glb'].setdefault('static_name', name + 'Receiver')
-    D.setdefault('hkx', {}).setdefault('output', 'behavior/%s/animations/first_person' % name.lower())
     D.setdefault('fingers', {}).setdefault('min_bend', 0.3)
     D['fingers'].setdefault('skin_center', True)
     # the shapes on the cartridge bone are inside the magazine
@@ -438,14 +430,6 @@ def resolve(D, project, template, out, rig):
             if p == node:
                 inner.append(n)
     D.setdefault('collision', {}).setdefault('skip', [shape_name(n) for n in inner])
-    val = D.setdefault('validate', {})
-    val.setdefault('skip_parts', list(D['collision']['skip']))
-    val.setdefault('skip_source', [n for n, _ in shapes if shape_name(n) in D['collision']['skip']])
-    for at in D.get('attachment', []):
-        at['model'] = full(at['model'], folder)
-        if at.get('connect') == 'Muzzle':
-            at.setdefault('at', 'ProjectileNode')
-            at.setdefault('projectile', True)
     auto_clips(D, template, out, rig, nodes)
     return nif
 

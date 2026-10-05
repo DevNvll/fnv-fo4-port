@@ -1,20 +1,20 @@
-"""The data of one weapon port, read from its configuration file.
+"""The data of one conversion, read from its configuration file.
 
-The environment variable PORT_CONFIG names the file (port.toml in the folder of the mod
-project). PORT_WORK replaces the work folder of the file, and PORT_RIG replaces the rig folder.
-The file gives only what the tools cannot find; tools/port_defaults.py has the defaults.
+The environment variable PORT_CONFIG names the file. PORT_WORK replaces the work folder of
+the file, and PORT_RIG replaces the rig folder. The file gives only what the tools cannot
+find; tools/port_defaults.py has the defaults. tools/port.py writes the file for a source
+folder.
 
 FNV weapon bone space: +X to the muzzle, +Y up, +Z to the right.
 FO4 weapon space: +Y to the muzzle, +Z up, +X to the right.
 A point p_fnv becomes p_fo4 = R @ p_fnv + T.
 
 T puts the trigger of the gun at the trigger pivot of the template weapon, so that the
-hands of the vanilla clips (third person, and the first-person clips that the mod does not
-replace) hold the grip.
+hands of the vanilla clips (third person, and the clips that the mod does not replace) hold
+the grip.
 
 Each moving part is on a FO4 weapon bone. Its rest transform relative to its parent bone is
-the pivot of the template weapon, with no rotation. A vanilla clip then shows the part at
-its rest place.
+the pivot of the template weapon. A vanilla clip then shows the part at its rest place.
 """
 import os
 import tomllib
@@ -25,7 +25,7 @@ ROOT = os.path.dirname(HERE)
 
 CONFIG = os.environ.get('PORT_CONFIG')
 if not CONFIG:
-    raise SystemExit('Set PORT_CONFIG to the port.toml of the weapon.')
+    raise SystemExit('Set PORT_CONFIG to the configuration file of the conversion.')
 CONFIG = os.path.abspath(CONFIG)
 PROJECT = os.path.dirname(CONFIG)
 with open(CONFIG, 'rb') as _f:
@@ -51,15 +51,8 @@ FPS = 30
 
 # A file gives only what the tools cannot find: port_defaults adds each other value.
 import port_defaults  # noqa: E402
-for _key in ('model', 'textures'):
-    if isinstance(D.get('source'), dict) and isinstance(D['source'].get(_key), str):
-        D['source'][_key] = path(D['source'][_key])
-if isinstance(D.get('source'), dict) and isinstance(D['source'].get('animations'), dict):
-    D['source']['animations'] = {k: path(v) for k, v in D['source']['animations'].items()}
-for _at in D.get('attachment', []):
-    if '{work}' in _at.get('model', ''):
-        _at['model'] = path(_at['model'])
 MODEL = port_defaults.resolve(D, PROJECT, TEMPLATE, OUT, RIG)
+SOURCE = D['source']
 
 # rows: FO4 x, y, z from FNV (x, y, z)
 R = np.array([[0.0, 0.0, 1.0],
@@ -75,36 +68,27 @@ PARTS = {'Weapon': ('Weapon', None)}
 for _bone, _node in D.get('parts', {}).items():
     PARTS[_bone] = (_node, np.array(TEMPLATE['pivots'][_bone], float))
 # FO4 bone -> rest rotation relative to its parent bone (x, y, z, w), for a template whose
-# clips keep a bone turned at rest (the magazine of the vanilla Deliverer). Most bones have none.
+# clips keep a bone turned at rest (the magazine of the 10mm pistol). Most bones have none.
 PART_ROTATION = {b: np.array(q, float) / np.linalg.norm(q) for b, q in TEMPLATE.get('rotations', {}).items() if b in PARTS}
 FO4_PARENT = {b: TEMPLATE['parents'][b] for b in PARTS if b != 'Weapon'}
 for _bone, _parent in FO4_PARENT.items():
     if _parent not in PARTS:
         raise SystemExit('%s: the part %s needs its parent %s in [parts]' % (CONFIG, _bone, _parent))
 
-# FNV mesh node -> FO4 bone that carries it. A mesh that is not here is static (bone Weapon).
-MESH_BONE = dict(D.get('mesh', {}).get('bones', {}))
-STATIC_MESHES = tuple(D.get('mesh', {}).get('static', ()))
-SKIP_MESHES = tuple(D.get('mesh', {}).get('skip', ()))
-
-
 # FO4 bone -> rest matrix of its FNV node in FNV weapon space (4x4, column vectors).
-# In a 3ds Max source the part nodes are at the weapon origin, so the table is empty.
-# In a NIF source a part node has its own place in the model.
+# A part node has its own place in the model.
 NODE_REST = {}
-SOURCE = D.get('source', {})
-if SOURCE.get('kind') == 'nif':
-    _world = {}
-    for _b, _parent, _wr, _wt, _ws in MODEL.walk():
-        _m = np.eye(4)
-        _m[:3, :3] = _wr * _ws
-        _m[:3, 3] = _wt
-        _world[_b['name']] = _m
-    for _bone, (_node, _) in PARTS.items():
-        if _bone != 'Weapon':
-            if _node not in _world:
-                raise SystemExit('%s: the model has no node %s' % (CONFIG, _node))
-            NODE_REST[_bone] = _world[_node]
+_world = {}
+for _b, _parent, _wr, _wt, _ws in MODEL.walk():
+    _m = np.eye(4)
+    _m[:3, :3] = _wr * _ws
+    _m[:3, 3] = _wt
+    _world[_b['name']] = _m
+for _bone, (_node, _) in PARTS.items():
+    if _bone != 'Weapon':
+        if _node not in _world:
+            raise SystemExit('%s: the model has no node %s' % (CONFIG, _node))
+        NODE_REST[_bone] = _world[_node]
 
 
 def pivot_in_weapon(bone):
@@ -161,14 +145,6 @@ def to_bone(bone, points):
         return points - pivot_in_weapon(bone)
     m = np.linalg.inv(rest_in_weapon(bone))
     return points @ m[:3, :3].T + m[:3, 3]
-
-
-def to_bone_direction(bone, vectors):
-    """Directions in FO4 weapon space -> the rest space of a FO4 weapon bone."""
-    vectors = np.asarray(vectors, float)
-    if not turned(bone):
-        return vectors
-    return vectors @ rest_in_weapon(bone)[:3, :3]
 
 
 def fnv_to_fo4(p):

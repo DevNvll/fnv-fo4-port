@@ -1,12 +1,13 @@
-"""Retarget FNV (NVCS) poses onto the Fallout 4 first-person hierarchy.
+"""Move a New Vegas pose (the NVCS skeleton) to the Fallout 4 first-person skeleton.
 
-This is the solver of the AK port (three-fallout, tools/blender/ak_retarget/solver.py)
-with one change: each weapon bone has its own constant matrix, so that a weapon part
-can use the pivot of the vanilla template weapon.
+The bones of the two skeletons have the same axes after a half turn about X (ARM_ROLL). The
+arms are solved again for the Fallout 4 bone lengths with each wrist at the source wrist, and
+each finger is solved on the line of the source finger. Each weapon bone follows its node of
+the source through a constant matrix (see c_matrix in tools/port_config.py).
 """
 import math
 from mathutils import Matrix, Quaternion, Vector
-from kf import trs
+from common import trs
 
 ARM_ROLL = Quaternion((1, 0, 0), math.pi)
 # The last thumb joint can bend this far to the back of the thumb. The vanilla clips of the
