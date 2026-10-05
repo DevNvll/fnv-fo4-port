@@ -57,6 +57,7 @@ class Setup:
         rt.finger_depth = a.finger_depth
         rt.finger_max_push = a.finger_max_push
         rt.finger_min_bend = a.finger_min_bend
+        rt.skin_center = a.skin_center == 'on'
         return rt
 
 
@@ -74,8 +75,11 @@ def add_solver_arguments(ap):
                     help='the least distance of a finger centerline to the gun, in finger radii')
     ap.add_argument('--finger-max-push', type=float, default=1.15, help='the largest joint move of the collision step')
     ap.add_argument('--finger-min-bend', type=float, default=float(cfg.D.get('fingers', {}).get('min_bend', 0.0)),
-                    help='the least bend of each finger joint, as a part of its bend in the Fallout 4 reference pose '
-                         '(0: a straight source finger gives a straight finger). Default: min_bend of [fingers] in the configuration file')
+                    help='the least flexion of each finger joint, as a part of its bend in the Fallout 4 reference pose '
+                         '(0: no rule, a joint can be straight or bend back). Default: min_bend of [fingers] in the configuration file')
+    ap.add_argument('--skin-center', choices=('on', 'off'), default='on' if cfg.D.get('fingers', {}).get('skin_center', False) else 'off',
+                    help='on: the center of the skin of each finger goes to the center of the skin of the source finger; '
+                         'off: the bones go to the bones. Default: skin_center of [fingers] in the configuration file')
     ap.add_argument('--thumb', default='path', choices=('path', 'rotation'),
                     help='rotation: the thumb copies the source rotations; path: its joints are on the source thumb line')
     ap.add_argument('--fingers', default='path', choices=('path', 'tip', 'rotation'),
@@ -135,6 +139,7 @@ def run(a):
                   'max_joint_move_of_collision_step': rt.max_push_turn,
                   'max_joint_move_after_time_filter': smoothed,
                   'corner_lift': rt.corner_lift, 'finger_depth': rt.finger_depth,
+                  'finger_min_bend': rt.finger_min_bend, 'skin_center': rt.skin_center,
                   'mean_fingertip_error': rt.tip_error_sum / rt.tip_count if rt.tip_count else None,
                   'missing_sources': sorted(missing)}
         np.savez_compressed(os.path.join(a.out, 'poses', tag + '.npz'), poses=arr, names=np.array(names),

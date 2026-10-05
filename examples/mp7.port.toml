@@ -43,10 +43,12 @@ static = ["Receiver:0", "Stock:0", "Grip:0", "IronSights:0", "Muzzle:0", "FireSe
 [glb]
 material = "MP7"
 
-# The MP7 was made before the rule for straight fingers. The rule stays off, so the clips are
-# those of the tested release.
+# The MP7 was made before the two finger rules (the least bend of a joint, and the skin of a
+# finger at the skin of the source finger). The rules stay off, so the clips are those of the
+# tested release.
 [fingers]
 min_bend = 0.0
+skin_center = false
 
 [materials]
 MP7 = "Materials/Weapons/MP7/MP7.bgsm"

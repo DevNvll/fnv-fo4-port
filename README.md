@@ -99,6 +99,7 @@ see what they assume. A value in the file always replaces a default.
 | `[parts]` | Each node `##NAME` of the model that has a shape, by a word in its name (bar, bolt, slide, lever, clip, mag, shell, bullet, trigger, hammer). The template says which bone each kind of part gets. |
 | `[glb]`, `[hkx]` | `meshes/Weapons/NAME/NAMEReceiver.glb` and `behavior/name/animations/first_person`. |
 | `[fingers] min_bend` | 0.3 |
+| `[fingers] skin_center` | `true` |
 | `[collision]`, `[validate]` | The cartridges in the magazine are not colliders. |
 | `[synth]` | The ready pose is the first frame of the aim clip, or of the reload. The sighted pose has the node `##SightingNode` on the view axis. |
 | `[clips]` | Each animation of the source by its New Vegas name, and each other clip of a gun from the weapon motion of the template. |
@@ -150,7 +151,7 @@ Other tables, for what a default cannot do:
 | `[[attachment]]` | `name`, `model`, `shapes`, `connect`, `at`, `projectile`. See `tools/attachments.py`. |
 | `[textures]` | `max_size`, `specular`, `gloss_base`, `gloss_range`, `[textures.stand_in]`. See `tools/fnv_textures.py`. |
 | `[collision]` | `skip`: shapes that are not colliders for the fingers. |
-| `[fingers]` | `min_bend`: the least bend of each finger joint, as a part of its bend in the Fallout 4 reference pose. |
+| `[fingers]` | `min_bend`: the least bend of each finger joint to the palm, as a part of its bend in the Fallout 4 reference pose (0: no rule). `skin_center`: the skin of each finger goes to the skin of the source finger (`false`: the bones go to the bones). |
 | `[synth]` | The clips from the weapon motion of the template. See `tools/blender/synth.py`. |
 | `[clips.NAME]` | `source`, or `parts`, or `auto`, or `synth = true`, and `events`, `hold`, `skip`. See `tools/port_clips.py`. |
 | `[validate]` | Options of the contact check. See `tools/blender/hand_contact.py`. |
@@ -189,12 +190,21 @@ of an animation. `fnvesp.py FILE.esp` prints the weapon records of a New Vegas p
 ## What the retarget does
 
 * The arms are solved again for the Fallout 4 bone lengths. Each wrist is at the source wrist.
-* Each finger joint is on the centerline of the source finger. A finger that is too near a gun
+* Each finger joint is on the line of the source finger. A finger that is too near a gun
   part moves out of it, 1.15 units for each joint at most.
-* With `min_bend`, a finger that is straight in the source keeps a part of the bend of the
-  Fallout 4 reference pose. The Fallout 4 hand mesh is modelled with bent fingers, and a
-  fully straight finger has lumps at its joints. The finger is an arch, and its fingertip
-  stays on its line.
+* With `skin_center`, that line is the center of the skin of the source finger, and the
+  center of the skin of the Fallout 4 finger goes to it. The skin of a finger is not a tube
+  about its bones: the thumb skin of the Fallout 4 hand is 0.4 units to the pad side of its
+  bones, and the New Vegas thumb skin is 0.13 units to the nail side. With the bones at one
+  place, the Fallout 4 thumb is 0.5 units away from the place of the source thumb on the gun.
+  `rig/finger_tips.json` has the two centers of each finger bone.
+* With `min_bend`, each finger joint has at least a part of its bend in the Fallout 4
+  reference pose, about the hinge of its bone. The Fallout 4 hand mesh is modelled with bent
+  fingers (about 45 and 30 degrees), and in the vanilla clips of the two templates no finger
+  joint bends to the back of the finger. Only the last thumb joint does, and it can keep 17
+  degrees of such a bend. A New Vegas clip can have a straight finger or a joint that bends
+  back, and the Fallout 4 mesh has lumps at such a joint. A finger that gets more bend is an
+  arch, and its fingertip stays on its line.
 * A weapon part follows its node of the source. A part node of a NIF source has its own place
   in the model, so the tools use the rest matrix of the node.
 * A clip of `[synth]` takes the motion of the weapon bone from a vanilla clip of the template
@@ -257,7 +267,12 @@ A second complete run gives the same bytes for each output file. A rig folder th
 * `fnvnif.py` reads version 20.2.0.7 of Fallout 3 and New Vegas, with NiTriStrips and
   NiTriShape geometry. A gun with skinned parts is not supported.
 * The Max reader has only the controller types of the MP7 scenes.
-* The finger values were set with the MP7. The FAMAS used them, and it needed `min_bend = 0.3` for a straight thumb. The MP7 has `min_bend` off.
+* The finger values were set with the MP7, which was made before the two finger rules. Its
+  file has `min_bend = 0.0` and `skin_center = false`, so its clips are those of its tested
+  release. The FAMAS and the PPK use the defaults.
+* The two hands have different bones. The thumb of the Fallout 4 hand starts 1.6 units away
+  from the start of the New Vegas thumb, so the two thumbs cannot agree at each place. The
+  tools put the fingertip at its place first.
 * The defaults are rules for the names and the motion of the mods that these three weapons
   come from. Read the output of `port.py CONFIG show` for a new mod.
 * A person must look at the pictures. The checks do not judge the look.

@@ -25,7 +25,7 @@ What the defaults are:
                   word gets a spare bone of the template.
     [glb]         meshes/Weapons/NAME/NAMEReceiver.glb, with the static node NAMEReceiver
     [hkx]         behavior/NAME/animations/first_person (the name in lower case)
-    [fingers]     min_bend = 0.3
+    [fingers]     min_bend = 0.3, skin_center = true
     [collision]   the shapes on the cartridge bone are not colliders (they are in the magazine)
     [validate]    the same shapes
     [[attachment]]  connect = "Muzzle" gives at = "ProjectileNode" and projectile = true
@@ -360,6 +360,7 @@ def resolve(D, project, template, out, rig):
     src = D.get('source')
     if isinstance(src, dict) and src.get('kind') == 'max':
         D.setdefault('fingers', {}).setdefault('min_bend', 0.3)
+        D['fingers'].setdefault('skin_center', True)
         D.setdefault('glb', {}).setdefault('output', 'meshes/Weapons/%s/%sReceiver.glb' % (name, name))
         D['glb'].setdefault('static_name', name + 'Receiver')
         D.setdefault('hkx', {}).setdefault('output', 'behavior/%s/animations/first_person' % name.lower())
@@ -425,6 +426,7 @@ def resolve(D, project, template, out, rig):
     D['glb'].setdefault('static_name', name + 'Receiver')
     D.setdefault('hkx', {}).setdefault('output', 'behavior/%s/animations/first_person' % name.lower())
     D.setdefault('fingers', {}).setdefault('min_bend', 0.3)
+    D['fingers'].setdefault('skin_center', True)
     # the shapes on the cartridge bone are inside the magazine
     inner = []
     node = D['parts'].get(template.get('roles', {}).get('cartridges'))

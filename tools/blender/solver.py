@@ -9,6 +9,10 @@ from mathutils import Matrix, Quaternion, Vector
 from kf import trs
 
 ARM_ROLL = Quaternion((1, 0, 0), math.pi)
+# The last thumb joint can bend this far to the back of the thumb. The vanilla clips of the
+# 10mm pistol hold the left thumb at this value (17 degrees), and it is the largest value of
+# the clips of the two templates but for some frames (23 degrees).
+THUMB_BACK = math.radians(17.0)
 
 
 def bone_map():
@@ -178,30 +182,54 @@ def _inside(tree, p):
     return votes >= 2
 
 
-def bend_least(points, axes, least):
-    """Give each joint of a finger at least the bend `least[k]` (radians), with the fingertip on its line.
+def hinge_axes(rotations, points, local_axes):
+    """The hinge of the two joints of a finger in world space: the hinge of the reference pose
+    (`local_axes`, in the frame of the bone before the joint) in the frame that the bone has
+    when it points along the finger line. The direction of an axis bends the finger to the palm."""
+    return [None if local_axes[k] is None else aim_x(rotations[k], points[k + 1] - points[k]) @ local_axes[k]
+            for k in range(2)]
+
+
+def flexion(d0, d1, axis):
+    """The bend of a joint about its hinge (radians): the turn from the bone before the joint
+    (direction d0) to the bone after it (d1). Positive to the palm, negative to the back of the
+    finger. A bend to the side is not in the value."""
+    a = axis - d0 * axis.dot(d0)                       # a hinge is at a right angle to the bone
+    if a.length < 1e-6:
+        return None, None
+    a.normalize()
+    side = d1 - a * d1.dot(a)
+    return math.atan2(d0.cross(side).dot(a), d0.dot(side)), a
+
+
+def bend_least(points, rotations, local_axes, least):
+    """Give each joint of a finger at least the flexion `least[k]` (radians), with the fingertip on its line.
 
     The Fallout 4 hand mesh is modelled with bent fingers (about 45 and 30 degrees at the two
-    joints). A finger that is fully straight has lumps at its joints. `axes[k]` is the hinge
-    of joint k in world space, with the direction that bends the finger to the palm.
+    joints), and the vanilla clips keep each joint in a small range: no finger joint bends to
+    the back of the finger, and only the last thumb joint does (17 degrees). A joint outside
+    that range has lumps, and a thumb that bends back at its first joint is not at its place on
+    the gun. A New Vegas clip can have such joints: its hand mesh is flat in the rest pose.
 
-    A joint with less bend turns the part of the finger after it to the palm. The complete
+    The flexion is the bend about the hinge of the bone (see hinge_axes and flexion), so a
+    source joint that bends back does not count as a bent joint. `least[k]` can be negative
+    (the joint can bend back that far) or None (no rule).
+
+    A joint with less flexion turns the part of the finger after it to the palm. The complete
     finger then turns about the knuckle until the fingertip is again on the line from the
     knuckle to the old fingertip. The finger is an arch over that line, so the fingertip does
-    not go into the part that it touches. A joint with sufficient bend does not change.
+    not go into the part that it touches. A joint with sufficient flexion does not change.
     Returns the new points."""
     pts = [p.copy() for p in points]
     changed = False
     for k in range(2):
-        if axes[k] is None or least[k] <= 0.0:
+        if local_axes[k] is None or least[k] is None:
             continue
         d0 = (pts[k + 1] - pts[k]).normalized()
         d1 = (pts[k + 2] - pts[k + 1]).normalized()
-        a = axes[k] - d0 * axes[k].dot(d0)             # a hinge is at a right angle to the bone
-        if a.length < 1e-6:
+        bend, a = flexion(d0, d1, hinge_axes(rotations, pts, local_axes)[k])
+        if a is None:
             continue
-        a.normalize()
-        bend = d0.angle(d1) if d0.cross(d1).dot(a) >= 0.0 else -d0.angle(d1)
         if bend < least[k] - 1e-6:
             q = Quaternion(a, least[k] - bend)
             for j in range(k + 2, 4):
@@ -217,7 +245,7 @@ def bend_least(points, axes, least):
     return pts
 
 
-def relax_out(points, radii, collider, floor=0.3, max_push=0.6, iterations=8, source_points=None, guard_axes=None):
+def relax_out(points, radii, collider, floor=0.3, max_push=0.6, iterations=8, source_points=None, guard_axes=None, guard_back=None):
     """Move a finger that is deep in a gun part out, until its skin is on the surface.
 
     The source hands are partly inside the gun: at some poses the centerline of a source
@@ -230,7 +258,9 @@ def relax_out(points, radii, collider, floor=0.3, max_push=0.6, iterations=8, so
     With `source_points` (the four points of the source finger line) a joint does not bend
     against the bend of the source finger: a bone that would point to the back of the finger
     is put in line with the bone before it. `guard_axes` gives the two hinges for this rule
-    in place of the hinges of the source line (see bend_least). Returns (points, largest joint move)."""
+    in place of the hinges of the source line (see bend_least), and `guard_back` the bend to
+    the back that each joint can have (radians; the last thumb joint has one).
+    Returns (points, largest joint move)."""
     orig = [p.copy() for p in points]
     pts = [p.copy() for p in points]
     lengths = [(points[k + 1] - points[k]).length for k in range(3)]
@@ -292,6 +322,14 @@ def relax_out(points, radii, collider, floor=0.3, max_push=0.6, iterations=8, so
                     continue
                 d0 = (pts[k + 1] - pts[k]).normalized()
                 d1 = (pts[k + 2] - pts[k + 1]).normalized()
+                if guard_back is not None and guard_back[k] > 0.0:
+                    # this joint can bend back: only a larger bend goes to the limit
+                    bend, a = flexion(d0, d1, axes[k])
+                    if a is not None and bend < -guard_back[k]:
+                        pts[k + 2] = pts[k + 1] + (Quaternion(a, -guard_back[k] - bend) @ d1) * lengths[k + 1]
+                        if k == 0:
+                            pts[3] = pts[2] + (pts[3] - (pts[1] + d1 * lengths[1])).normalized() * lengths[2]
+                    continue
                 if d0.cross(d1).dot(axes[k]) < 0.0:
                     # the part of d1 in the bend plane goes back in line with d0
                     side = d1 - axes[k] * d1.dot(axes[k])
@@ -386,10 +424,14 @@ class Retargeter:
         self.finger_depth = 0.65         # the least distance of a finger centerline to the gun, in finger radii
         self.finger_max_push = 1.15
         self.corner_lift = 0.5
-        # The least bend of each finger joint, as a part of the bend of that joint in the FO4
-        # reference pose (0: a finger can be fully straight; see bend_least).
+        # The least flexion of each finger joint, as a part of the bend of that joint in the FO4
+        # reference pose (0: no rule, a joint can be straight or bend back; see bend_least).
         self.finger_min_bend = 0.0
         self.rest_flex_cache = {}
+        # True: the center of the skin of each Fallout 4 finger goes to the center of the skin
+        # of the source finger. False: the bones go to the bones (see skin_shift).
+        self.skin_center = False
+        self.skin_shift_cache = {}
         self.thumb_mode = 'path'        # 'rotation': the thumb copies the source rotations
         self.finger_log = []            # for each frame: finger -> (bones, rotations, joints before and after the collision step)
         self.max_tip_error = 0.0
@@ -478,6 +520,13 @@ class Retargeter:
                 a2 = world[fnv[2]].translation + self.offset
                 a3 = (world[fnv[2]] @ Vector((self.tips['fnv'][fnv[2]]['x_max'], 0.0, 0.0))) + self.offset
                 a0 = world[fnv[0]].translation + self.offset
+                rotations = [world[n].to_quaternion() @ ARM_ROLL for n in fnv]
+                if self.skin_center:
+                    # the source line becomes the line of the skin centers; its first point
+                    # moves with the second one
+                    shift = self.skin_shift(fo4, fnv)
+                    a1, a2, a3 = a1 + rotations[1] @ shift[0], a2 + rotations[2] @ shift[1], a3 + rotations[2] @ shift[2]
+                    a0 = a0 + rotations[1] @ shift[0]
                 if self.finger_solver == 'path':
                     b1, b2, b3, err = solve_finger_path(b0, m1, m2, m3, a0, a1, a2, a3, self.corner_lift)
                 else:
@@ -486,31 +535,20 @@ class Retargeter:
                 self.tip_error_sum += err
                 self.tip_count += 1
                 pts = [b0, b1, b2, b3]
-                rotations = [world[n].to_quaternion() @ ARM_ROLL for n in fnv]
-                flex = least = None
+                flex = back = None
                 if self.finger_min_bend > 0.0:
                     axes_local, rest_bend = self.rest_flex(fo4)
-                    flex = [None if axes_local[k] is None else aim_x(rotations[k], pts[k + 1] - pts[k]).to_matrix() @ axes_local[k]
-                            for k in range(2)]
-                    # A source finger with a clear bend gives the hinge itself. The hinge of the
-                    # reference pose is for a source finger that is almost straight.
-                    # The two joints of a finger have about the same hinge direction, so one clear
-                    # bend is sufficient for the two.
-                    source_line = (a0, a1, a2, a3)
-                    clear_axes = []
-                    for k in range(2):
-                        s0, s1 = source_line[k + 1] - source_line[k], source_line[k + 2] - source_line[k + 1]
-                        clear_axes.append(s0.cross(s1).normalized() if s0.length > 1e-6 and s1.length > 1e-6
-                                          and s0.angle(s1) > math.radians(10.0) else None)
-                    if clear_axes[0] is not None or clear_axes[1] is not None:
-                        flex = [clear_axes[0] or clear_axes[1], clear_axes[1] or clear_axes[0]]
                     least = [rest_bend[k] * self.finger_min_bend for k in range(2)]
-                    pts = bend_least(pts, flex, least)
+                    if finger == 1:
+                        least[1] = -THUMB_BACK
+                    pts = bend_least(pts, rotations, axes_local, least)
+                    flex = hinge_axes(rotations, pts, axes_local)
+                    back = [max(0.0, -v) for v in least]
                 if self.collider is not None:
                     radii = [self.tips['fo4'][n]['radius'] for n in fo4]
                     clear = pts
                     pts, moved = relax_out(pts, radii, self.collider, self.finger_depth, self.finger_max_push, source_points=(a0, a1, a2, a3),
-                                           guard_axes=flex)
+                                           guard_axes=flex, guard_back=back)
                     self.max_push_turn = max(self.max_push_turn, moved)
                     if moved > 1e-4:
                         self.push_count += 1
@@ -560,6 +598,29 @@ class Retargeter:
                 bends.append(d0.angle(d1))
             self.rest_flex_cache[key] = (axes, bends)
         return self.rest_flex_cache[key]
+
+    def skin_shift(self, fo4, fnv):
+        """The move of the source finger line that puts the skin of the Fallout 4 finger on the
+        skin of the source finger: for the second joint, the third joint and the fingertip, a
+        vector in the frame of the bone (the second bone, the third bone and the third bone).
+
+        The skin of a finger is not a tube about its bone. The thumb of the Fallout 4 hand has
+        the center of its skin 0.4 units to the pad side of the bone, and the New Vegas thumb
+        has it 0.13 units to the nail side. With the bones at one place the Fallout 4 thumb is
+        0.5 units to the pad side of the source thumb (the difference of the other fingers is
+        0.1 units). The values are in rig/finger_tips.json (tools/blender/finger_tips.py).
+        The first joint is the knuckle: the hand bone gives its place."""
+        key = fo4[0]
+        if key not in self.skin_shift_cache:
+            s, t = self.tips['fnv'], self.tips['fo4']
+            out = []
+            for a, b, field in ((fnv[1], fo4[1], 'center'), (fnv[2], fo4[2], 'center'), (fnv[2], fo4[2], 'tip_center')):
+                if field not in s.get(a, {}) or field not in t.get(b, {}):
+                    out.append(Vector((0.0, 0.0, 0.0)))
+                    continue
+                out.append(Vector((0.0, s[a][field][0] - t[b][field][0], s[a][field][1] - t[b][field][1])))
+            self.skin_shift_cache[key] = out
+        return self.skin_shift_cache[key]
 
     def smooth_fingers(self, poses, sigma=1.5):
         """Filter the moves of the collision step over time (a Gaussian window, `sigma` frames).
